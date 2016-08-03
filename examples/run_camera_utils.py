@@ -1,8 +1,10 @@
+from __future__ import print_function, absolute_import, division
+import astropy.io.fits as fits
 import lsst.afw.cameraGeom.utils as cameraGeomUtils
 import lsst.afw.display.ds9 as ds9
 import lsst.afw.image as afwImage
 import lsst.obs.lsstSim as lsstSim
-from desc.lsst_camera_readout import ImageSource, set_raw_bboxes
+from desc.lsst_camera_readout import ImageSource, set_itl_bboxes
 
 mapper = lsstSim.LsstSimMapper()
 camera = mapper.camera
@@ -13,13 +15,21 @@ ccd = 'S:1,1'
 sensor = camera[' '.join((raft, ccd))]
 
 image_source = ImageSource('../data/lsst_e_200_f2_R22_S11_E000.fits.gz')
+gain = 1.7  # use a common gain for all segments
 
-amp_id = '0,0'
-amp = sensor[amp_id]
-#amp = set_raw_bboxes(amp)
-
-outfile = 'C00_image.fits'
-image_source.write_ampliflier_image(amp, outfile)
+output = fits.HDUList()
+output.append(fits.PrimaryHDU())
+for col in '10':
+    for row in '01234567':
+        amp_id = '%s,%s' % (col, row)
+        print('processing', amp_id)
+        amp = sensor[amp_id]
+        amp = set_itl_bboxes(amp)
+        amp.setGain(gain)
+        outfile = 'C%s%s_image.fits' % (col, row)
+        image_source.write_ampliflier_image(amp, outfile)
+        output.append(fits.open(outfile)[0])
+output.writeto('mef.fits', clobber=True)
 
 cameraGeomUtils.showAmp(amp, imageSource=image_source, display=display,
                         imageFactory=afwImage.ImageI)
