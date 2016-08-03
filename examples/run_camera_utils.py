@@ -18,5 +18,8 @@ amp_id = '0,0'
 amp = sensor[amp_id]
 #amp = set_raw_bboxes(amp)
 
+outfile = 'C00_image.fits'
+image_source.write_ampliflier_image(amp, outfile)
+
 cameraGeomUtils.showAmp(amp, imageSource=image_source, display=display,
                         imageFactory=afwImage.ImageI)

@@ -12,6 +12,7 @@ Steps:
   Add bias
   Add dark current
   Apply gain
+  Write FITS file for each amplifier
 """
 from __future__ import print_function, absolute_import, division
 import numpy as np
@@ -28,9 +29,17 @@ class ImageSource(object):
     '''
     def __init__(self, eimage_file):
         "Constructor"
-        self.eimage_data = fits.open(eimage_file)[0].data
+        self.eimage = fits.open(eimage_file)
+        self.eimage_data = self.eimage[0].data
+        self._amp_images = {}
 
     def getAmpImage(self, amp, imageFactory=afwImage.ImageI):
+        if not self._amp_images.has_key(amp.getName()):
+            self._amp_images[amp.getName()] \
+                = self._makeAmpImage(amp, imageFactory)
+        return self._amp_images[amp.getName()]
+
+    def _makeAmpImage(self, amp, imageFactory):
         "Return the segment image for the amplier geometry specified in amp."
         bbox = amp.getBBox()
         full_segment = afwImage.ImageF(amp.getRawBBox())
@@ -62,6 +71,32 @@ class ImageSource(object):
         output_image.getArray()[:] = np.array(full_arr, dtype=np.int)
 
         return output_image
+
+    def write_ampliflier_image(self, amp, outfile, clobber=True):
+        output = fits.HDUList()
+        output.append(self.eimage[0])
+        amp_image = self.getAmpImage(amp)
+        output[0].data = amp_image.getArray()
+        output[0].header['DATASEC'] \
+            = self._noao_section_keyword(amp.getRawDataBBox())
+        output[0].header['DETSEC'] \
+            = self._noao_section_keyword(amp.getBBox(),
+                                         flipx=amp.getRawFlipX(),
+                                         flipy=amp.getRawFlipY())
+        output[0].header['BIASSEC'] \
+            = self._noao_section_keyword(amp.getRawHorizontalOverscanBBox())
+        output[0].header['GAIN'] = amp.getGain()
+        output.writeto(outfile, clobber=clobber)
+
+    @staticmethod
+    def _noao_section_keyword(bbox, flipx=False, flipy=False):
+        xmin, xmax = bbox.getMinX()+1, bbox.getMaxX()+1
+        ymin, ymax = bbox.getMinY()+1, bbox.getMaxY()+1
+        if flipx:
+            xmin, xmax = xmax, xmin
+        if flipy:
+            ymin, ymax = ymax, ymin
+        return '[%i:%i,%i:%i]' % (xmin, xmax, ymin, ymax)
 
 def set_raw_bboxes(amp):
     "Apply realistic pixel geometry for ITL sensors."
