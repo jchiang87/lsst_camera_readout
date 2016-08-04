@@ -8,7 +8,6 @@ from desc.lsst_camera_readout import ImageSource, set_itl_bboxes
 
 mapper = lsstSim.LsstSimMapper()
 camera = mapper.camera
-display = ds9.getDisplay()
 
 raft = 'R:2,2'
 ccd = 'S:1,1'
@@ -31,5 +30,20 @@ for col in '10':
         output.append(fits.open(outfile)[0])
 output.writeto('mef.fits', clobber=True)
 
-cameraGeomUtils.showAmp(amp, imageSource=image_source, display=display,
+amp = sensor['0,0']
+amp = set_itl_bboxes(amp)
+cameraGeomUtils.showAmp(amp, imageSource=image_source,
+                        display=ds9.getDisplay(frame=0),
                         imageFactory=afwImage.ImageI)
+
+cameraGeomUtils.showAmp(amp, imageSource=image_source,
+                        display=ds9.getDisplay(frame=1),
+                        imageFactory=afwImage.ImageF)
+
+cameraGeomUtils.showAmp(amp, imageSource=image_source,
+                        display=ds9.getDisplay(frame=2),
+                        imageFactory=afwImage.ImageD)
+
+cameraGeomUtils.showAmp(amp, imageSource=image_source,
+                        display=ds9.getDisplay(frame=3),
+                        imageFactory=afwImage.ImageU)

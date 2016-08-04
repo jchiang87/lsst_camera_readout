@@ -1,18 +1,18 @@
 """
-Classes to convert an eimage to individual sensor segments, applying
+Code to convert an eimage to individual sensor segments, applying
 electronics readout effects.
 
-Steps:
-  Read in single sensor eimage
-  Extract geometry from amplifier record
-  Copy imaging segment pixels
-  Add defects (bright defects, dark defects, traps)
-  Apply CTE
-  Apply crosstalk
-  Add bias
-  Add dark current
-  Apply gain
-  Write FITS file for each amplifier
+ * Read in single sensor eimage
+ * Extract geometry from amplifier record
+ * Copy imaging segment pixels
+ * Add bias
+ * Add dark current
+ * Add defects (bright defects, dark defects, traps)
+ * Apply CTE
+ * Apply crosstalk
+ * Apply gain
+ * Write FITS file for each amplifier
+
 """
 from __future__ import print_function, absolute_import, division
 import copy
@@ -52,31 +52,41 @@ class ImageSource(object):
         self.eimage_data = self.eimage[0].data.transpose()
         self._amp_images = {}
 
-    def getAmpImage(self, amp, imageFactory=afwImage.ImageI):
+    def getAmpImage(self, amp, imageFactory=afwImage.ImageI,
+                    add_read_noise=True):
         """
-        Return an amplifier afwImage.Image object with electronics readout
-        applied.
+        Return an amplifier afwImage.Image object with electronics
+        readout effects applied.
 
         Parameters
         ----------
         amp : lsst.afw.table.tableLib.AmpInfoRecord
             Data structure containing the amplifier information such as
             pixel geometry, gain, noise, etc..
-        imageFactory : lsst.afw.image.Image[FIU], optional
+        imageFactory : lsst.afw.image.Image[DFIU], optional
             Image factory to be used for creating the return value.
+        add_read_noise : bool, optional
+           Flag to add read noise.
 
         Returns
         -------
-        lsst.afw.Image[FIU]
+        lsst.afw.Image[DFIU]
             The image object containing the pixel data.
         """
         self._check_amp_geometry(amp)
-        if not self._amp_images.has_key((amp.getName(), imageFactory)):
-            self._amp_images[(amp.getName(), imageFactory)] \
-                = self._make_amp_image(amp, imageFactory)
-        return self._amp_images[(amp.getName(), imageFactory)]
+        if not self._amp_images.has_key(amp.getName()):
+            self._amp_images[amp.getName()] \
+                = self._make_amp_image(amp, add_read_noise)
+        float_image = self._amp_images[amp.getName()]
+        if imageFactory == afwImage.ImageF:
+            return float_image
+        else:
+            # Return image as type given by imageFactory.
+            output_image = imageFactory(amp.getRawBBox())
+            output_image.getArray()[:] = float_image.getArray()
+        return output_image
 
-    def _make_amp_image(self, amp, imageFactory):
+    def _make_amp_image(self, amp, add_read_noise):
         """
         Create the segment image for the amplier geometry specified in amp.
 
@@ -85,12 +95,12 @@ class ImageSource(object):
         amp : lsst.afw.table.tableLib.AmpInfoRecord
             Data structure containing the amplifier information such as
             pixel geometry, gain, noise, etc..
-        imageFactory : lsst.afw.image.Image[FIU], optional
-            Image factory to be used for creating the return value.
+        add_read_noise : bool
+            Flag to add read noise.
 
         Returns
         -------
-        lsst.afw.Image[FIU]
+        lsst.afw.ImageF
             The image object containing the pixel data.
         """
         bbox = amp.getBBox()
@@ -110,19 +120,25 @@ class ImageSource(object):
             data = data[::-1, :]
 
         imaging_segment.getArray()[:] = data
-
-        # Add read noise.
         full_arr = full_segment.getArray()
-        full_arr += np.random.normal(scale=amp.getReadNoise(),
-                                     size=full_arr.shape)
+        # Add read noise.
+        if add_read_noise:
+            full_arr += np.random.normal(scale=amp.getReadNoise(),
+                                         size=full_arr.shape)
+        # Add bias level.
+
+        # Add dark current.
+
+        # Add defects.
+
+        # Apply CTE.
+
+        # Apply crosstalk.
+
         # Convert to ADU.
         full_arr /= amp.getGain()
 
-        # Return image as type given by imageFactory.
-        output_image = imageFactory(amp.getRawBBox())
-        output_image.getArray()[:] = full_arr
-
-        return output_image
+        return full_segment
 
     def _check_amp_geometry(self, amp):
         """
