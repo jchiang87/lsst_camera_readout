@@ -18,7 +18,8 @@ class FocalPlaneReadoutTestCase(unittest.TestCase):
         raft = 'R:2,2'
         ccd = 'S:1,1'
         sensor = self.camera[' '.join((raft, ccd))]
-        sensor_props = readout_props.get_sensor(raft, ccd)
+        sensor_id = readout_props.sensor_id(raft, ccd)
+        sensor_props = readout_props.get_sensor(sensor_id)
         self.assertEqual(sensor.getBBox().getWidth(), sensor_props.width)
         self.assertEqual(sensor.getBBox().getHeight(), sensor_props.height)
         self.assertEqual(len(sensor), sensor_props.num_amps)
@@ -27,7 +28,8 @@ class FocalPlaneReadoutTestCase(unittest.TestCase):
             for row in '01234567':
                 amp_num += 1
                 chan = 'C:%s,%s' % (col, row)
-                amp_props = readout_props.get_amp(raft, ccd, chan)
+                amp_id = readout_props.amp_id(raft, ccd, chan)
+                amp_props = readout_props.get_amp(amp_id)
                 self.assertEqual(amp_props.gain, 1.7)
                 self.assertEqual(amp_props.bias_level, 1000.)
                 self.assertEqual(amp_props.read_noise, 7.)

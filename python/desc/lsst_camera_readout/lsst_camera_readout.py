@@ -15,11 +15,14 @@ electronics readout effects.
 
 """
 from __future__ import print_function, absolute_import, division
+import os
 import copy
 import numpy as np
 import astropy.io.fits as fits
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
+import lsst.utils as lsstUtils
+from .focalplane_readout import FocalPlaneReadout
 
 __all__ = ['ImageSource', 'set_itl_bboxes', 'set_e2v_bboxes']
 
@@ -33,6 +36,16 @@ class ImageSource(object):
     eimage_file : str
         Filename of the eimage FITS file from which the amplifier images
         will be extracted.
+    seg_file : str, optional
+        Full path of segmentation.txt file, the PhoSim-formatted file
+        that describes the properties of the sensors in the focal
+        plane.  If None, then the version in obs_lsstSim/description
+        will be used.
+    raft_sensor : str, optional
+        The raft and sensor identifier, e.g., 'R:2,2_S:1,1'.  If None,
+        then it will be extracted from the eimage_file name.
+    add_read_noise : bool, optional
+        Flag to add read noise.
 
     Attributes
     ----------
@@ -41,8 +54,12 @@ class ImageSource(object):
     _amp_images : dict
         Dictionary of amplifier images to serve as a cache so that each
         amplifier image is constructed only once.
+    fp_props : FocalPlaneReadout object
+        Object containing the readout properties of the sensors in the
+        focal plane, extracted from the segmentation.txt file.
     '''
-    def __init__(self, eimage_file):
+    def __init__(self, eimage_file, seg_file=None, raft_sensor=None,
+                 add_read_noise=True):
         """
         Class constructor.
         """
@@ -50,10 +67,52 @@ class ImageSource(object):
         # The eimage data from phosim seems to have x- and y-directions
         # swapped, so transpose it.
         self.eimage_data = self.eimage[0].data.transpose()
-        self._amp_images = {}
 
-    def getAmpImage(self, amp, imageFactory=afwImage.ImageI,
-                    add_read_noise=True):
+        if seg_file is None:
+            seg_file = os.path.join(lsstUtils.getPackageDir('obs_lsstSim'),
+                                    'description', 'segmentation.txt')
+        self.fp_props = FocalPlaneReadout.read_phosim_seg_file(seg_file)
+
+        if raft_sensor is None:
+            self.raft, self.sensor = self.extract_sensor_id(eimage_file)
+        else:
+            self.raft, self.sensor = raft_sensor.split('_')
+
+        self._make_amp_images(add_read_noise)
+
+    @staticmethod
+    def extract_sensor_id(eimage_file):
+        """
+        Extract the raft and sensor ids from the eimage filename.
+
+        Parameters
+        ----------
+        eimage_file : str
+            Filename of the eimage FITS file from which the amplifier
+            images will be extracted.
+
+        Returns
+        -------
+        tuple
+            A tuple containing (raft, sensor).
+        """
+        tokens = os.path.basename(eimage_file).split('_')
+        raft = 'R:%s,%s' % (tokens[4][1], tokens[4][2])
+        sensor = 'S:%s,%s' % (tokens[5][1], tokens[5][2])
+        return raft, sensor
+
+    def _exptime(self):
+        """
+        The exposure time of the frame in seconds.
+
+        Returns
+        -------
+        float
+            The exposure time of the frame in seconds from the eimage_file.
+        """
+        return self.eimage[0].header['EXPTIME']
+
+    def getAmpImage(self, amp, imageFactory=afwImage.ImageI):
         """
         Return an amplifier afwImage.Image object with electronics
         readout effects applied.
@@ -65,82 +124,94 @@ class ImageSource(object):
             pixel geometry, gain, noise, etc..
         imageFactory : lsst.afw.image.Image[DFIU], optional
             Image factory to be used for creating the return value.
-        add_read_noise : bool, optional
-           Flag to add read noise.
 
         Returns
         -------
         lsst.afw.Image[DFIU]
             The image object containing the pixel data.
         """
-        self._check_amp_geometry(amp)
-        if not self._amp_images.has_key(amp.getName()):
-            self._amp_images[amp.getName()] \
-                = self._make_amp_image(amp, add_read_noise)
         float_image = self._amp_images[amp.getName()]
         if imageFactory == afwImage.ImageF:
             return float_image
-        else:
-            # Return image as type given by imageFactory.
-            output_image = imageFactory(amp.getRawBBox())
-            output_image.getArray()[:] = float_image.getArray()
+        # Return image as the type given by imageFactory.
+        output_image = imageFactory(amp.getRawBBox())
+        output_image.getArray()[:] = float_image.getArray()
         return output_image
 
-    def _make_amp_image(self, amp, add_read_noise):
+    def _make_amp_images(self, add_read_noise):
+        sensor_props = self.fp_props.get_sensor(self.raft, self.sensor)
+        for amp_name in sensor_props.amp_names:
+            self._make_amp_image(amp_name, add_read_noise)
+        self._apply_crosstalk()
+
+    def _make_amp_image(self, amp_name, add_read_noise):
         """
         Create the segment image for the amplier geometry specified in amp.
 
         Parameters
         ----------
-        amp : lsst.afw.table.tableLib.AmpInfoRecord
-            Data structure containing the amplifier information such as
-            pixel geometry, gain, noise, etc..
+        amp_name : str
+            The amplifier name, e.g., "R22_S11_C00".
         add_read_noise : bool
             Flag to add read noise.
 
-        Returns
-        -------
-        lsst.afw.ImageF
-            The image object containing the pixel data.
         """
-        bbox = amp.getBBox()
-        full_segment = afwImage.ImageF(amp.getRawBBox())
+        amp_props = self.fp_props.get_amp(amp_name)
+        bbox = amp_props.mosiac_section
+        full_segment = afwImage.ImageF(amp_props.full_segment)
 
         # Get the imaging segment (i.e., excluding prescan and
         # overscan regions), and fill with data from the eimage.
-        imaging_segment = full_segment.Factory(full_segment,
-                                               amp.getRawDataBBox())
+        imaging_segment = full_segment.Factory(full_segment, amp_props.imaging)
         data = self.eimage_data[bbox.getMinY():bbox.getMaxY()+1,
                                 bbox.getMinX():bbox.getMaxX()+1].copy()
 
-        # Apply flips in x and y relative to assembled eimage.
-        if amp.getRawFlipX():
+        # Apply flips in x and y relative to assembled eimage in order
+        # to have the pixels in readout order.
+        if amp_props.flipx:
             data = data[:, ::-1]
-        if amp.getRawFlipY():
+        if amp_props.flipy:
             data = data[::-1, :]
 
         imaging_segment.getArray()[:] = data
         full_arr = full_segment.getArray()
-        # Add read noise.
-        if add_read_noise:
-            full_arr += np.random.normal(scale=amp.getReadNoise(),
-                                         size=full_arr.shape)
-        # Add bias level.
 
         # Add dark current.
+        full_arr += np.random.poisson(amp_props.dark_current*self._exptime(),
+                                      size=full_arr.shape)
 
         # Add defects.
 
         # Apply CTE.
 
-        # Apply crosstalk.
-
         # Convert to ADU.
-        full_arr /= amp.getGain()
+        full_arr /= amp_props.gain
 
-        return full_segment
+        # Add read noise.
+        if add_read_noise:
+            full_arr += np.random.normal(scale=amp_props.read_noise,
+                                         size=full_arr.shape)
+        # Add bias level.
+        full_arr += amp_props.bias_level
 
-    def _check_amp_geometry(self, amp):
+        self._amp_images[amp_name] = full_segment
+
+    def _apply_crosstalk(self):
+        """
+        Apply inter-amplifier crosstalk using the cross-talk matrix
+        from segmentation.txt.  This should be run only once and
+        only after ._make_amp_image has been run for each amplifier.
+        """
+        sensor_props = self.fp_props.get_sensor(self.raft, self.sensor)
+        imarrs = np.array([self._amp_images[amp_name].getArray()
+                           for amp_name in sensor_props.amp_names])
+        for amp_name in sensor_props.amp_names:
+            amp_props = self.fp_props.get_amplifier(self.raft, self.sensor,
+                                                    channel(amp_name))
+            self.amp_images[amp_name].getArray()[:, :] \
+                = sum(imarrs*amp_props.crosstalk)
+
+    def check_amp_geometry(self, amp):
         """
         Check that the imaging section of amp is consistent with the
         eimage geometry.
@@ -268,3 +339,20 @@ def set_e2v_bboxes(amp):
     amp.setRawPrescanBBox(afwGeom.Box2I(afwGeom.Point2I(0, 0),
                                         afwGeom.Extent2I(10, 2002)))
     return amp
+
+def channel(amp_name):
+    """
+    Extract the channel id from the full amp_name used by Phosim.
+
+    Parameters
+    ----------
+    amp_name : str
+        Amplifier name used by PhoSim, e.g., "R22_S11_C00"
+
+    Returns
+    -------
+    str
+        The channel name formatted DM-style, e.g., "C:0,0"
+    """
+    tokens = amp_name.split('_')
+    return "C:%s,%s" % (tokens[1], tokens[2])

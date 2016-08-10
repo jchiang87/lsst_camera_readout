@@ -24,7 +24,7 @@ for col in '10':
         amp_id = '%s,%s' % (col, row)
         print('processing', amp_id)
         amp = sensor[amp_id]
-#        amp = set_itl_bboxes(amp)
+        amp = set_itl_bboxes(amp)
         amp.setGain(gain)
         outfile = 'C%s%s_image.fits' % (col, row)
         image_source.write_ampliflier_image(amp, outfile)

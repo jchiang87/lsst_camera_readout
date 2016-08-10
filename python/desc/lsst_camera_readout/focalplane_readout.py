@@ -27,44 +27,37 @@ class FocalPlaneReadout(object):
         self.sensors = {}
         self.amps = {}
 
-    def get_sensor(self, raft, ccd):
+    def get_sensor(self, sensor_id):
         """
         Access to the specified SensorProperties object.
 
         Parameters
         ----------
-        raft : str
-            Raft id using lsst.afw.cameraGeom syntax, e.g., "R:2,2".
-        ccd : str
-            Sensor id using lsst.afw.cameraGeom syntax, e.g., "S:1,1".
+        sensor_id : str
+            Sensor ID of the form "Rrr_Sss", e.g., "R22_S11".
 
         Returns
         -------
         SensorProperties object
-            The object containing the sensor properties.
+            The object containing the sensor-wide properties.
         """
-        return self.sensors[self.sensor_id(raft, ccd)]
+        return self.sensors[sensor_id]
 
-    def get_amp(self, raft, ccd, chan):
+    def get_amp(self, amp_id):
         """
         Access to the specified AmplifierProperties object.
 
         Parameters
         ----------
-        raft : str
-            Raft id using lsst.afw.cameraGeom syntax, e.g., "R:2,2".
-        ccd : str
-            Sensor id using lsst.afw.cameraGeom syntax, e.g., "S:1,1".
-        chan : str
-            Amplifier channel id using lsst.afw.cameraGeom syntax, e.g.,
-            "C:1,1".
+        amp_id : str
+            Amplifier ID of the form "Rrr_Sss_Ccc", e.g., "R22_S11_C00"
 
         Returns
         -------
         AmplifierProperties object
             The object containing the amplifier properties.
         """
-        return self.amps[self.amp_id(raft, ccd, chan)]
+        return self.amps[amp_id]
 
     @staticmethod
     def sensor_id(raft, ccd):
@@ -158,6 +151,10 @@ class SensorProperties(object):
         The number of physical sensor pixels in the parallel direction.
     width : int
         The number of physical sensor pixels in the serial direction.
+    amp_names : tuple
+        The amplifier names in the order in which they were added
+        to self.  For data read in from segmentation.txt, this ordering
+        is used for the crosstalk matrix column ordering.
     """
     def __init__(self, line):
         tokens = line.strip().split()
@@ -165,6 +162,22 @@ class SensorProperties(object):
         self.num_amps = int(tokens[1])
         self.height = int(tokens[2])
         self.width = int(tokens[3])
+        self._amp_names = []
+
+    @property
+    def amp_names(self):
+        return tuple(self._amp_names)
+
+    def append_amp(self, amp_props):
+        """
+        Append an amplifier to the ._amp_order list.
+
+        Parameters
+        ----------
+        amp_props : AmplifierProperties object
+            The object containing the amplifier properties.
+        """
+        self._amp_names.append(amp_props.name)
 
 class AmplifierProperties(object):
     """
