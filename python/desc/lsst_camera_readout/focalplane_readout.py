@@ -119,7 +119,6 @@ class FocalPlaneReadout(object):
         FocalPlaneReadout object
             The filled FocalPlaneReadout object.
         """
-        print(seg_file)
         my_self = FocalPlaneReadout()
         with open(seg_file, 'r') as f:
             lines = [line for line in f.readlines() if not line.startswith('#')]
@@ -133,6 +132,7 @@ class FocalPlaneReadout(object):
                     i += 1
                     amp_props = AmplifierProperties(lines[i])
                     my_self.amps[amp_props.name] = amp_props
+                    sensor_props.append_amp(amp_props)
             except IndexError:
                 break
         return my_self
@@ -212,6 +212,8 @@ class AmplifierProperties(object):
         ymin, ymax, xmin, xmax = (int(x) for x in tokens[1:5])
         xsize = xmax - xmin + 1
         ysize = ymax - ymin + 1
+        self.mosaic_section = afwGeom.Box2I(afwGeom.Point2I(xmin, ymin),
+                                            afwGeom.Extent2I(xsize, ysize))
         parallel_prescan = int(tokens[15])
         serial_overscan = int(tokens[16])
         serial_prescan = int(tokens[17])

@@ -24,7 +24,8 @@ import lsst.afw.image as afwImage
 import lsst.utils as lsstUtils
 from .focalplane_readout import FocalPlaneReadout
 
-__all__ = ['ImageSource', 'set_itl_bboxes', 'set_e2v_bboxes']
+__all__ = ['ImageSource', 'set_itl_bboxes', 'set_e2v_bboxes',
+           'set_phosim_bboxes']
 
 class ImageSource(object):
     '''
@@ -41,8 +42,8 @@ class ImageSource(object):
         that describes the properties of the sensors in the focal
         plane.  If None, then the version in obs_lsstSim/description
         will be used.
-    raft_sensor : str, optional
-        The raft and sensor identifier, e.g., 'R:2,2_S:1,1'.  If None,
+    sensor_id : str, optional
+        The raft and sensor identifier, e.g., 'R22_S11'.  If None,
         then it will be extracted from the eimage_file name.
     add_read_noise : bool, optional
         Flag to add read noise.
@@ -58,7 +59,7 @@ class ImageSource(object):
         Object containing the readout properties of the sensors in the
         focal plane, extracted from the segmentation.txt file.
     '''
-    def __init__(self, eimage_file, seg_file=None, raft_sensor=None,
+    def __init__(self, eimage_file, seg_file=None, sensor_id=None,
                  add_read_noise=True):
         """
         Class constructor.
@@ -73,10 +74,10 @@ class ImageSource(object):
                                     'description', 'segmentation.txt')
         self.fp_props = FocalPlaneReadout.read_phosim_seg_file(seg_file)
 
-        if raft_sensor is None:
-            self.raft, self.sensor = self.extract_sensor_id(eimage_file)
+        if sensor_id is None:
+            self.sensor_id = self.extract_sensor_id(eimage_file)
         else:
-            self.raft, self.sensor = raft_sensor.split('_')
+            self.sensor_id = sensor_id
 
         self._make_amp_images(add_read_noise)
 
@@ -93,13 +94,11 @@ class ImageSource(object):
 
         Returns
         -------
-        tuple
-            A tuple containing (raft, sensor).
+        str
+            The sensor_id, e.g., "R22_S11".
         """
         tokens = os.path.basename(eimage_file).split('_')
-        raft = 'R:%s,%s' % (tokens[4][1], tokens[4][2])
-        sensor = 'S:%s,%s' % (tokens[5][1], tokens[5][2])
-        return raft, sensor
+        return '_'.join(tokens[4:6])
 
     def _exptime(self):
         """
@@ -130,7 +129,8 @@ class ImageSource(object):
         lsst.afw.Image[DFIU]
             The image object containing the pixel data.
         """
-        float_image = self._amp_images[amp.getName()]
+        amp_name = self.amp_name(amp)
+        float_image = self._amp_images[amp_name]
         if imageFactory == afwImage.ImageF:
             return float_image
         # Return image as the type given by imageFactory.
@@ -138,8 +138,12 @@ class ImageSource(object):
         output_image.getArray()[:] = float_image.getArray()
         return output_image
 
+    def amp_name(self, amp_info_record):
+        return '_'.join((self.sensor_id,
+                         'C%s' % amp_info_record.getName()[::2]))
     def _make_amp_images(self, add_read_noise):
-        sensor_props = self.fp_props.get_sensor(self.raft, self.sensor)
+        self._amp_images = {}
+        sensor_props = self.fp_props.get_sensor(self.sensor_id)
         for amp_name in sensor_props.amp_names:
             self._make_amp_image(amp_name, add_read_noise)
         self._apply_crosstalk()
@@ -157,7 +161,7 @@ class ImageSource(object):
 
         """
         amp_props = self.fp_props.get_amp(amp_name)
-        bbox = amp_props.mosiac_section
+        bbox = amp_props.mosaic_section
         full_segment = afwImage.ImageF(amp_props.full_segment)
 
         # Get the imaging segment (i.e., excluding prescan and
@@ -168,9 +172,9 @@ class ImageSource(object):
 
         # Apply flips in x and y relative to assembled eimage in order
         # to have the pixels in readout order.
-        if amp_props.flipx:
+        if amp_props.flip_x:
             data = data[:, ::-1]
-        if amp_props.flipy:
+        if amp_props.flip_y:
             data = data[::-1, :]
 
         imaging_segment.getArray()[:] = data
@@ -202,14 +206,13 @@ class ImageSource(object):
         from segmentation.txt.  This should be run only once and
         only after ._make_amp_image has been run for each amplifier.
         """
-        sensor_props = self.fp_props.get_sensor(self.raft, self.sensor)
+        sensor_props = self.fp_props.get_sensor(self.sensor_id)
         imarrs = np.array([self._amp_images[amp_name].getArray()
                            for amp_name in sensor_props.amp_names])
         for amp_name in sensor_props.amp_names:
-            amp_props = self.fp_props.get_amplifier(self.raft, self.sensor,
-                                                    channel(amp_name))
-            self.amp_images[amp_name].getArray()[:, :] \
-                = sum(imarrs*amp_props.crosstalk)
+            amp_props = self.fp_props.get_amp(amp_name)
+            self._amp_images[amp_name].getArray()[:, :] \
+                = sum([x*y for x, y in zip(imarrs, amp_props.crosstalk)])
 
     def check_amp_geometry(self, amp):
         """
@@ -338,6 +341,33 @@ def set_e2v_bboxes(amp):
                                                  afwGeom.Extent2I(542, 20)))
     amp.setRawPrescanBBox(afwGeom.Box2I(afwGeom.Point2I(0, 0),
                                         afwGeom.Extent2I(10, 2002)))
+    return amp
+
+def set_phosim_bboxes(amp):
+    """
+    Function to apply the segmentation.txt geometry.
+
+    Parameters
+    ----------
+    amp : lsst.afw.table.tableLib.AmpInfoRecord
+        Data structure containing the amplifier information such as
+        pixel geometry, gain, noise, etc..
+
+    Returns
+    -------
+    lsst.afw.table.tableLib.AmpInfoRecord
+        The updated AmpInfoRecord.
+    """
+    amp.setRawBBox(afwGeom.Box2I(afwGeom.Point2I(0, 0),
+                                 afwGeom.Extent2I(519, 2001)))
+    amp.setRawDataBBox(afwGeom.Box2I(afwGeom.Point2I(4, 1),
+                                     afwGeom.Extent2I(509, 2000)))
+    amp.setRawHorizontalOverscanBBox(afwGeom.Box2I(afwGeom.Point2I(513, 1),
+                                                   afwGeom.Extent2I(6, 2000)))
+    amp.setRawVerticalOverscanBBox(afwGeom.Box2I(afwGeom.Point2I(0, 2001),
+                                                 afwGeom.Extent2I(519, 0)))
+    amp.setRawPrescanBBox(afwGeom.Box2I(afwGeom.Point2I(0, 1),
+                                        afwGeom.Extent2I(4, 2000)))
     return amp
 
 def channel(amp_name):

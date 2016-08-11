@@ -13,9 +13,8 @@ class ImageSourceTestCase(unittest.TestCase):
 
     def test_extract_sensor_id(self):
         eimage_file = '../data/lsst_e_200_f2_R23_S12_E000.fits.gz'
-        raft, sensor = ImageSource.extract_sensor_id(eimage_file)
-        self.assertEqual(raft, 'R:2,3')
-        self.assertEqual(sensor, 'S:1,2')
+        sensor_id = ImageSource.extract_sensor_id(eimage_file)
+        self.assertEqual(sensor_id, 'R23_S12')
 
 if __name__ == '__main__':
     unittest.main()

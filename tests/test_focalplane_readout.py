@@ -49,6 +49,21 @@ class FocalPlaneReadoutTestCase(unittest.TestCase):
 #                                 amp_props.parallel_overscan)
                 self.assertEqual(amp.getRawFlipX(), amp_props.flip_x)
                 self.assertEqual(amp.getRawFlipY(), amp_props.flip_y)
+        amp_id = readout_props.amp_id(raft, ccd, 'C:0,0')
+        amp_props = readout_props.get_amp(amp_id)
+        self.assertEqual(amp_props.flip_x, False)
+        self.assertEqual(amp_props.flip_y, True)
+        bbox = amp_props.mosaic_section
+        self.assertEqual(bbox.getMinX(), 0)
+        self.assertEqual(bbox.getMinY(), 0)
+
+        amp_id = readout_props.amp_id(raft, ccd, 'C:1,0')
+        amp_props = readout_props.get_amp(amp_id)
+        self.assertEqual(amp_props.flip_x, False)
+        self.assertEqual(amp_props.flip_y, False)
+        bbox = amp_props.mosaic_section
+        self.assertEqual(bbox.getMinX(), 0)
+        self.assertEqual(bbox.getMinY(), 2000)
 
 if __name__ == '__main__':
     unittest.main()
