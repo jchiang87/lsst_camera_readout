@@ -212,6 +212,9 @@ class AmplifierProperties(object):
         ymin, ymax, xmin, xmax = (int(x) for x in tokens[1:5])
         xsize = xmax - xmin + 1
         ysize = ymax - ymin + 1
+        # The following line is a kluge to get the MEF to mosaic
+        # properly in ds9.
+        ymin = (ymin + ysize) % (2*ysize)
         self.mosaic_section = afwGeom.Box2I(afwGeom.Point2I(xmin, ymin),
                                             afwGeom.Extent2I(xsize, ysize))
         parallel_prescan = int(tokens[15])

@@ -111,16 +111,18 @@ class ImageSource(object):
         """
         return self.eimage[0].header['EXPTIME']
 
-    def getAmpImage(self, amp, imageFactory=afwImage.ImageI):
+    def getAmpImage(self, amp_info_record, imageFactory=afwImage.ImageI):
         """
         Return an amplifier afwImage.Image object with electronics
-        readout effects applied.
+        readout effects applied.  This method is only provided so that
+        the pixel data and geometry can be displayed using
+        lsst.afw.cameraGeom.utils.showAmp.
 
         Parameters
         ----------
-        amp : lsst.afw.table.tableLib.AmpInfoRecord
-            Data structure containing the amplifier information such as
-            pixel geometry, gain, noise, etc..
+        amp_info_record : lsst.afw.table.tableLib.AmpInfoRecord
+            Data structure used by cameraGeom to contain the amplifier
+            information such as pixel geometry, gain, noise, etc..
         imageFactory : lsst.afw.image.Image[DFIU], optional
             Image factory to be used for creating the return value.
 
@@ -129,12 +131,15 @@ class ImageSource(object):
         lsst.afw.Image[DFIU]
             The image object containing the pixel data.
         """
-        amp_name = self.amp_name(amp)
+        amp_name = self.amp_name(amp_info_record)
         float_image = self._amp_images[amp_name]
         if imageFactory == afwImage.ImageF:
             return float_image
-        # Return image as the type given by imageFactory.
-        output_image = imageFactory(amp.getRawBBox())
+        # Return image as the type given by imageFactory.  The
+        # following line implicitly assumes that the bounding box for
+        # the full segment matches the bounding box read from
+        # segmentation.txt in the creation of the .fp_props attribute.
+        output_image = imageFactory(amp_info_record.getRawBBox())
         output_image.getArray()[:] = float_image.getArray()
         return output_image
 
@@ -214,39 +219,14 @@ class ImageSource(object):
             self._amp_images[amp_name].getArray()[:, :] \
                 = sum([x*y for x, y in zip(imarrs, amp_props.crosstalk)])
 
-    def check_amp_geometry(self, amp):
-        """
-        Check that the imaging section of amp is consistent with the
-        eimage geometry.
-
-        Parameters
-        ----------
-        amp : lsst.afw.table.tableLib.AmpInfoRecord
-            Data structure containing the amplifier information such as
-            pixel geometry, gain, noise, etc..
-
-        Raises
-        ------
-        RuntimeError
-            If the amplifier geometry is inconsistent with the eimage
-            geometry.
-        """
-        bbox = amp.getBBox()
-        xsize = bbox.getMaxX() - bbox.getMinX() + 1
-        ysize = bbox.getMaxY() - bbox.getMinY() + 1
-        if (8*xsize != self.eimage[0].header['NAXIS2'] or
-            2*ysize != self.eimage[0].header['NAXIS1']):
-            raise RuntimeError('amplifier geometry is inconsistent with eimage')
-
-    def write_ampliflier_image(self, amp, outfile, clobber=True):
+    def write_amplifier_image(self, amp_name, outfile, clobber=True):
         """
         Write the pixel data for the specified amplifier as FITS image.
 
         Parameters
         ----------
-        amp : lsst.afw.table.tableLib.AmpInfoRecord
-            Data structure containing the amplifier information such as
-            pixel geometry, gain, noise, etc..
+        amp_name : str
+            Amplifier id, e.g., "R22_S11_C00".
         outfile : str
             Filename of the FITS file to be written.
         clobber : bool, optional
@@ -254,17 +234,18 @@ class ImageSource(object):
         """
         output = fits.HDUList()
         output.append(copy.deepcopy(self.eimage[0]))
-        amp_image = self.getAmpImage(amp)
+        amp_image = self._amp_images[amp_name]
+        amp_props = self.fp_props.get_amp(amp_name)
         output[0].data = amp_image.getArray()
         output[0].header['DATASEC'] \
-            = self._noao_section_keyword(amp.getRawDataBBox())
+            = self._noao_section_keyword(amp_props.imaging)
         output[0].header['DETSEC'] \
-            = self._noao_section_keyword(amp.getBBox(),
-                                         flipx=amp.getRawFlipX(),
-                                         flipy=amp.getRawFlipY())
+            = self._noao_section_keyword(amp_props.mosaic_section,
+                                         flipx=amp_props.flip_x,
+                                         flipy=amp_props.flip_y)
         output[0].header['BIASSEC'] \
-            = self._noao_section_keyword(amp.getRawHorizontalOverscanBBox())
-        output[0].header['GAIN'] = amp.getGain()
+            = self._noao_section_keyword(amp_props.serial_overscan)
+        output[0].header['GAIN'] = amp_props.gain
         output.writeto(outfile, clobber=clobber)
 
     @staticmethod
@@ -369,20 +350,3 @@ def set_phosim_bboxes(amp):
     amp.setRawPrescanBBox(afwGeom.Box2I(afwGeom.Point2I(0, 1),
                                         afwGeom.Extent2I(4, 2000)))
     return amp
-
-def channel(amp_name):
-    """
-    Extract the channel id from the full amp_name used by Phosim.
-
-    Parameters
-    ----------
-    amp_name : str
-        Amplifier name used by PhoSim, e.g., "R22_S11_C00"
-
-    Returns
-    -------
-    str
-        The channel name formatted DM-style, e.g., "C:0,0"
-    """
-    tokens = amp_name.split('_')
-    return "C:%s,%s" % (tokens[1], tokens[2])
