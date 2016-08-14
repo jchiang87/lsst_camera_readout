@@ -160,8 +160,10 @@ class SensorProperties(object):
         tokens = line.strip().split()
         self.name = tokens[0]
         self.num_amps = int(tokens[1])
-        self.height = int(tokens[2])
-        self.width = int(tokens[3])
+#        self.height = int(tokens[2])
+#        self.width = int(tokens[3])
+        self.height = int(tokens[3])
+        self.width = int(tokens[2])
         self._amp_names = []
 
     @property
@@ -209,13 +211,15 @@ class AmplifierProperties(object):
     def __init__(self, line):
         tokens = line.strip().split()
         self.name = tokens[0]
-        ymin, ymax, xmin, xmax = (int(x) for x in tokens[1:5])
-        xsize = xmax - xmin + 1
-        ysize = ymax - ymin + 1
+#        ymin, ymax, xmin, xmax = (int(x) for x in tokens[1:5])
+        xmin, xmax, ymin, ymax = (int(x) for x in tokens[1:5])
+        xsize = np.abs(xmax - xmin) + 1
+        ysize = np.abs(ymax - ymin) + 1
         # The following line is a kluge to get the MEF to mosaic
         # properly in ds9.
-        ymin = (ymin + ysize) % (2*ysize)
-        self.mosaic_section = afwGeom.Box2I(afwGeom.Point2I(xmin, ymin),
+#        ymin = (ymin + ysize) % (2*ysize)
+        self.mosaic_section = afwGeom.Box2I(afwGeom.Point2I(min(xmin, xmax),
+                                                            min(ymin, ymax)),
                                             afwGeom.Extent2I(xsize, ysize))
         parallel_prescan = int(tokens[15])
         serial_overscan = int(tokens[16])
@@ -230,16 +234,17 @@ class AmplifierProperties(object):
                                              + serial_overscan,
                                              ysize + parallel_prescan
                                              + parallel_overscan))
-        self.prescan = afwGeom.Box2I(afwGeom.Point2I(serial_prescan, 0),
-                                     afwGeom.Extent2I(xsize, parallel_prescan))
-        self.serial_overscan = afwGeom.Box2I(afwGeom.Point2I(0, parallel_prescan),
-                                             afwGeom.Extent2I(serial_prescan, ysize))
-        self.parallel_overscan = afwGeom.Box2I(afwGeom.Point2I(0, 0),
-                                               afwGeom.Extent2I(0, 0))
+        self.prescan = afwGeom.Box2I(afwGeom.Point2I(0, 0),
+                                     afwGeom.Extent2I(serial_prescan, ysize))
+        self.serial_overscan = afwGeom.Box2I(afwGeom.Point2I(serial_prescan + xsize, 0),
+                                             afwGeom.Extent2I(serial_overscan, ysize))
+        self.parallel_overscan = afwGeom.Box2I(afwGeom.Point2I(0, ysize),
+                                               afwGeom.Extent2I(serial_prescan + xsize + serial_overscan,
+                                                                parallel_overscan))
         self.gain = float(tokens[7])
         self.bias_level = float(tokens[9])
         self.read_noise = float(tokens[11])
         self.dark_current = float(tokens[13])
         self.crosstalk = np.array([float(x) for x in tokens[21:]])
-        self.flip_x = (tokens[5] == '1')
+        self.flip_x = (tokens[5] == '-1')
         self.flip_y = (tokens[6] == '-1')

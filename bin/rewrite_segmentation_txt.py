@@ -113,11 +113,7 @@ class AmpGeom(object):
             # to 16 is right-to-left.
             x1 = (namps - amp)*self.nx
             x2 = (namps - amp + 1)*self.nx - 1
-            # Flip in y for top half of sensor.
-            y1, y2 = 2*self.ny - 1, self.ny
-        if self.output_nodes[channel_id] < 0:
-            # Flip since the output node is on the right side of segment.
-            x1, x2 = x2, x1
+            y1, y2 = self.ny, 2*self.ny - 1
         return x1, x2, y1, y2
 
     def xy_flips(self, channel_id):

@@ -65,9 +65,10 @@ class ImageSource(object):
         Class constructor.
         """
         self.eimage = fits.open(eimage_file)
-        # The eimage data from phosim seems to have x- and y-directions
-        # swapped, so transpose it.
-        self.eimage_data = self.eimage[0].data.transpose()
+#        # The eimage data from phosim seems to have x- and y-directions
+#        # swapped, so transpose it.
+#        self.eimage_data = self.eimage[0].data.transpose()
+        self.eimage_data = self.eimage[0].data
 
         if seg_file is None:
             seg_file = os.path.join(lsstUtils.getPackageDir('obs_lsstSim'),
@@ -185,23 +186,23 @@ class ImageSource(object):
         imaging_segment.getArray()[:] = data
         full_arr = full_segment.getArray()
 
-        # Add dark current.
-        full_arr += np.random.poisson(amp_props.dark_current*self._exptime(),
-                                      size=full_arr.shape)
-
-        # Add defects.
-
-        # Apply CTE.
-
-        # Convert to ADU.
-        full_arr /= amp_props.gain
-
-        # Add read noise.
-        if add_read_noise:
-            full_arr += np.random.normal(scale=amp_props.read_noise,
-                                         size=full_arr.shape)
-        # Add bias level.
-        full_arr += amp_props.bias_level
+#        # Add dark current.
+#        full_arr += np.random.poisson(amp_props.dark_current*self._exptime(),
+#                                      size=full_arr.shape)
+#
+#        # Add defects.
+#
+#        # Apply CTE.
+#
+#        # Convert to ADU.
+#        full_arr /= amp_props.gain
+#
+#        # Add read noise.
+#        if add_read_noise:
+#            full_arr += np.random.normal(scale=amp_props.read_noise,
+#                                         size=full_arr.shape)
+#        # Add bias level.
+#        full_arr += amp_props.bias_level
 
         self._amp_images[amp_name] = full_segment
 
