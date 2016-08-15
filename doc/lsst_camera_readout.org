@@ -1,0 +1,38 @@
+#+STARTUP: beamer
+#+LaTeX_CLASS: beamer
+#+LaTeX_CLASS_OPTIONS: [10pt, t]
+#+BEAMER_FRAME_LEVEL: 1
+#+TITLE: LSST Camera Electronics Readout
+#+AUTHOR: Jim Chiang
+#+DATE: 2016-08-17
+#+COLUMNS: %45ITEM %10BEAMER_env(Env) %8BEAMER_envargs(Env Args) %4BEAMER_col(Col) %8BEAMER_extra(Extra)
+#+PROPERTY: BEAMER_col_ALL 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 :ETC
+#+OPTIONS: toc:nil
+#+LaTeX_HEADER: \newcommand{\code}[1]{{\tt{#1}}}
+#+LaTeX_HEADER: \newcommand{\mybold}[1]{{\textbf{#1}}}
+#+LaTeX_HEADER: \hypersetup{colorlinks=true, urlcolor=blue}
+
+* Outline
+- Desired Functionality
+- Properties of Science Sensor Candidates
+- PhoSim's segmentation.txt and obs_lsstSim
+- Implementation
+
+* Desired Fucntionality
+- Accept inputs from GalSim or PhoSim "eimages".
+- Write as FITS files that look like what real data will.
+- Add electronics-related effects:
+  - readnoise (for PhoSim eimages)
+  - bias
+  - dark-current
+  - defects
+  - CTE
+  - crosstalk
+- Do not include sensor physics effects, e.g., brighter-fatter, tree-rings,
+  edge rolloff, QE.
+
+* Properities of Science Sensor Candidates
+
+* PhoSim's segmentation.txt and obs_lsstSim
+
+* Implementation
