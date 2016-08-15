@@ -13,26 +13,83 @@
 #+LaTeX_HEADER: \hypersetup{colorlinks=true, urlcolor=blue}
 
 * Outline
-- Desired Functionality
-- Properties of Science Sensor Candidates
-- PhoSim's segmentation.txt and obs_lsstSim
-- Implementation
+  - Desired Functionality
+  - Properties of Science Sensor Candidates
+  - PhoSim's segmentation.txt and obs_lsstSim
+  - Implementation
 
 * Desired Fucntionality
-- Accept inputs from GalSim or PhoSim "eimages".
-- Write as FITS files that look like what real data will.
-- Add electronics-related effects:
-  - readnoise (for PhoSim eimages)
-  - bias
-  - dark-current
-  - defects
-  - CTE
-  - crosstalk
-- Do not include sensor physics effects, e.g., brighter-fatter, tree-rings,
-  edge rolloff, QE.
+  - Accept inputs from GalSim or PhoSim "eimages".
+  - Write as FITS files that look like what real data will.
+  - Add electronics-related effects:
+    - readnoise (for PhoSim eimages)
+    - bias
+    - dark-current
+    - defects
+    - CTE
+    - system gain
+    - crosstalk
+  - Does not include sensor physics effects, e.g., brighter-fatter,
+    tree-rings, edge rolloff, QE.
 
 * Properities of Science Sensor Candidates
+  - See [[https://confluence.slac.stanford.edu/x/DrLOCw][my 2015-11-19 presentation to the SSim group]].
+  - Pixel geometries:
+    [[DetectorPlaneLayout_single_sensor_annotated.png]]
+    - Different for e2v (left) and ITL (right) devices:
+      - Imaging region per segment: $512 \times 2002$ (e2v) versus
+        $509 \times 2000$ (ITL).
+      - e2v devices have 10 pixels of prescan; ITL devices have 3 pixels
+        of prescan.  Prescan only makes sense for the serial direction.
+      - Number of overscan pixels in the serial and parallel directions
+        are configurable, but generally should be as large as possible
+        while still satisfying the 2-second readout time constraint.
+    - Serial readout is in the x-direction in sensor coordinates (ignore
+      the Camera Coordinate System).
+    - The pixel origin (1,1) is at the LLC in Segment 10 in both sensors.
+    - Sky images will be flipped in the sensor x-direction relative to the
+      above diagram.
 
 * PhoSim's segmentation.txt and obs_lsstSim
+  - Most (all?) of the electronics readout properties are summarized
+    in PhoSim's [[https://bitbucket.org/phosim/phosim_release/src/39f267c3f9733a490de85231cd7ac6c5e7154ebc/data/lsst/segmentation.txt?at=master&fileviewer=file-view-default][segmentation.txt]] file.  Unfortunately, current and recent
+    versions contain severe flaws:
+    - Confuses serial and parallel transfer directions.
+    - Includes "parallel prescan", has zero overscan in (true) serial direction.
+  - lsst.afw.cameraGeom does encapsulate some of the amplifier pixel
+    geometry, but the data that the version in [[https://github.com/lsst/obs_lsstSim/tree/master/description/camera][obs_lsstSim master]] reads
+    is inconsistent with the segmentation.txt file on which it is based.
+    - Work is apparently underway to fix this, [[https://jira.lsstcorp.org/browse/DM-6349][DM-6349]].
+    - Whatever is in obs_lsstSim somehow has to be synced with what's in
+      PhoSim, [[https://jira.lsstcorp.org/browse/DM-7181][DM-7181]].
+  - Getting pixel geometry info from cameraGeom and the rest of the readout
+    info from segmentation.txt is problematic, even if the synchronization
+    between these two sources was automatic.
+
+Conclusion:
+
+We will only use (a version of) the segmentation.txt file as the
+source of information for genenerating output.  If there is ever some
+single entity in the LSST Stack (e.g., in cameraGeom) that can serve
+as the single source of valid information, then we will use that.
 
 * Implementation
+  - Make this a standalone package in the DESC software space, i.e.,
+    not part of Galsim or the Stack.  Currently, the code lives in
+    https://github.com/jchiang87/lsst_camera_readout
+  - It can accept a sensor image with the proper geometry --- $4072
+    \times 4000$ pixels for an ITL device, $4096 \times 4004$ pixels
+    for an e2v device --- and generates 16 FITS with primary HDUs that
+    match the imaging HDUs currently written by CCS for the single
+    sensor data.
+  - The input image can have three possible formats:
+    - PhoSim eimage FITS file
+    - GalSim Image
+    - lsst.afw.Image[DFIU]
+  - The pixel values in the input image should be e-/pixel.
+
+* To Do:
+  - Create segmentation.txt (and focalplane.txt) files that have correct
+    sensor geometries, and ensure that PhoSim can run using these files.
+  - Make sure the Stack (i.e., obs_lsstSim) can read in and process
+    the corrected per amplifier FITS files.
