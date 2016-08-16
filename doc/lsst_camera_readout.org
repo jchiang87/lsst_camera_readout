@@ -2,7 +2,7 @@
 #+LaTeX_CLASS: beamer
 #+LaTeX_CLASS_OPTIONS: [10pt, t]
 #+BEAMER_FRAME_LEVEL: 1
-#+TITLE: LSST Camera Electronics Readout
+#+TITLE: LSST Camera Electronics Readout:\\ Status Report
 #+AUTHOR: Jim Chiang
 #+DATE: 2016-08-17
 #+COLUMNS: %45ITEM %10BEAMER_env(Env) %8BEAMER_envargs(Env Args) %4BEAMER_col(Col) %8BEAMER_extra(Extra)
@@ -16,9 +16,10 @@
 
 * Outline
   - Desired Functionality
-  - Properties of Science Sensor Candidates
-  - PhoSim's segmentation.txt and \obslsstSim
+  - Science Sensor Readout Properties
+  - Sources for Readout Properties: PhoSim's segmentation.txt and \obslsstSim
   - Implementation
+  - To Do
 
 * Desired Functionality
   - Accept inputs from GalSim or PhoSim "eimages".
@@ -31,8 +32,10 @@
     - CTE
     - system gain
     - crosstalk
-  - Do not include sensor physics effects, e.g., brighter-fatter,
-    tree-rings, edge roll-off, QE.
+
+    This is all fairly straight-forward, e.g., [[https://bitbucket.org/phosim/phosim_release/src/39f267c3f9733a490de85231cd7ac6c5e7154ebc/source/e2adc/e2adc.cpp?at=master&fileviewer=file-view-default][e2adc]].
+  - This work does not include sensor physics effects, e.g.,
+    brighter-fatter, tree rings, edge roll-off, QE.
 
 * Science Sensors Properties
 #+LATEX: \centering
@@ -63,10 +66,10 @@
   - This implies different flips in the x-direction for e2v vs ITL sensors.
     See my [[https://confluence.slac.stanford.edu/x/DrLOCw][2015-11-19 presentation to the SSim group]]
 
-* PhoSim's segmentation.txt and \obslsstSim
-  - Most (all?) of the electronics readout properties are summarized
-    in PhoSim's [[https://bitbucket.org/phosim/phosim_release/src/39f267c3f9733a490de85231cd7ac6c5e7154ebc/data/lsst/segmentation.txt?at=master&fileviewer=file-view-default][segmentation.txt]] file.  Unfortunately, recent versions
-    contain severe flaws:
+* Sources for Readout Properties: PhoSim's segmentation.txt and \obslsstSim
+  - Most of the electronics readout properties (except CTE) are
+    summarized in PhoSim's [[https://bitbucket.org/phosim/phosim_release/src/39f267c3f9733a490de85231cd7ac6c5e7154ebc/data/lsst/segmentation.txt?at=master&fileviewer=file-view-default][segmentation.txt]] file.  Unfortunately,
+    recent versions have some issues:
     - Interprets sensor y-direction as serial direction; x-direction
       as parallel.
     - Includes a "parallel prescan".
@@ -81,10 +84,10 @@
     the readout info from segmentation.txt is problematic, even if the
     synchronization between these two sources is fixed (and automatic).
 
-*Conclusion:* We will only use a (corrected) version of the
+*Conclusion:* We will use a (corrected) version of the
 segmentation.txt file as the source of information for the electronics
-readout properties.  If there is ever some single entity in the LSST
-Stack (e.g., in \code{cameraGeom}) that provides all of the needed
+readout properties.  If single entity becomes available in the LSST
+Stack (e.g., in \code{cameraGeom}) which provides all of the needed
 information, then we will use that.
 
 * Implementation
@@ -104,8 +107,15 @@ information, then we will use that.
     - lsst.afw.Image[DFIU]
   - The pixel values in the input image should be e-/pixel.
 
-* To Do:
-  - Create segmentation.txt (and focalplane.txt) files that have correct
-    sensor geometries, and ensure that PhoSim can run using these files.
+* To Do
+  - Create [[https://github.com/jchiang87/lsst_camera_readout/blob/master/data/segmentation_itl.txt][segmentation.txt]] (and [[https://github.com/jchiang87/lsst_camera_readout/blob/master/data/focalplanelayout_itl.txt][focalplanelayout.txt]]) files that have
+    correct sensor geometries, and ensure that PhoSim can run using
+    these files.
   - Make sure the Stack (i.e., \obslsstSim) can read in and process
     the corrected per amplifier FITS files.
+  - Find a common way of accessing measured electronics readout
+    properties (presumably provided by the Camera team) that everybody
+    (PhoSim, LSST Stack, etc.) uses.
+  - Determine sources of the image metadata for GalSim.Image or
+    lsst.afw.Image inputs so that the FITS files that are created can
+    be analyzed by the Stack.

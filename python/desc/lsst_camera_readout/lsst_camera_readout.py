@@ -2,15 +2,14 @@
 Code to convert an eimage to individual sensor segments, applying
 electronics readout effects.
 
- * Read in single sensor eimage
- * Extract geometry from amplifier record
- * Copy imaging segment pixels
- * Add bias
+ * Retrieve pixel geometry for each segment
+ * Copy imaging segment pixels from eimage
  * Add dark current
  * Add defects (bright defects, dark defects, traps)
  * Apply CTE
- * Apply crosstalk
  * Apply gain
+ * Apply crosstalk
+ * Add read noise and bias offset
  * Write FITS file for each amplifier
 
 """
@@ -22,7 +21,7 @@ import astropy.io.fits as fits
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.utils as lsstUtils
-from .focalplane_readout import FocalPlaneReadout
+from .focalplane_readout import FocalPlaneReadout, cte_matrix
 
 __all__ = ['ImageSource', 'set_itl_bboxes', 'set_e2v_bboxes',
            'set_phosim_bboxes']
@@ -52,6 +51,8 @@ class ImageSource(object):
     ----------
     eimage : astropy.io.fits.HDUList
         The input eimage data.
+    eimage_data : np.array
+        The data attribute of the eimage PrimaryHDU.
     _amp_images : dict
         Dictionary of amplifier images to serve as a cache so that each
         amplifier image is constructed only once.
@@ -65,9 +66,6 @@ class ImageSource(object):
         Class constructor.
         """
         self.eimage = fits.open(eimage_file)
-#        # The eimage data from phosim seems to have x- and y-directions
-#        # swapped, so transpose it.
-#        self.eimage_data = self.eimage[0].data.transpose()
         self.eimage_data = self.eimage[0].data
 
         if seg_file is None:
@@ -147,14 +145,17 @@ class ImageSource(object):
     def amp_name(self, amp_info_record):
         return '_'.join((self.sensor_id,
                          'C%s' % amp_info_record.getName()[::2]))
+
     def _make_amp_images(self, add_read_noise):
         self._amp_images = {}
         sensor_props = self.fp_props.get_sensor(self.sensor_id)
         for amp_name in sensor_props.amp_names:
-            self._make_amp_image(amp_name, add_read_noise)
+            self._make_amp_image(amp_name)
         self._apply_crosstalk()
+        for amp_name in sensor_props.amp_names:
+            self._add_read_noise_and_bias(amp_name, add_read_noise)
 
-    def _make_amp_image(self, amp_name, add_read_noise):
+    def _make_amp_image(self, amp_name):
         """
         Create the segment image for the amplier geometry specified in amp.
 
@@ -162,9 +163,6 @@ class ImageSource(object):
         ----------
         amp_name : str
             The amplifier name, e.g., "R22_S11_C00".
-        add_read_noise : bool
-            Flag to add read noise.
-
         """
         amp_props = self.fp_props.get_amp(amp_name)
         bbox = amp_props.mosaic_section
@@ -186,25 +184,44 @@ class ImageSource(object):
         imaging_segment.getArray()[:] = data
         full_arr = full_segment.getArray()
 
-#        # Add dark current.
-#        full_arr += np.random.poisson(amp_props.dark_current*self._exptime(),
-#                                      size=full_arr.shape)
-#
-#        # Add defects.
-#
+        # Add dark current.
+        full_arr += np.random.poisson(amp_props.dark_current*self._exptime(),
+                                      size=full_arr.shape)
+
+        # Add defects.
+
 #        # Apply CTE.
+#        pcte_matrix = cte_matrix(full_arr.shape[0], amp_props.pcti)
+#        for col in range(0, full_arr.shape[1]):
+#            full_arr[:, col] = np.dot(pcte_matrix, full_arr[:, col])
 #
-#        # Convert to ADU.
-#        full_arr /= amp_props.gain
-#
-#        # Add read noise.
-#        if add_read_noise:
-#            full_arr += np.random.normal(scale=amp_props.read_noise,
-#                                         size=full_arr.shape)
-#        # Add bias level.
-#        full_arr += amp_props.bias_level
+#        scte_matrix = cte_matrix(full_arr.shape[1], amp_props.scti)
+#        for row in range(0, full_arr.shape[0]):
+#            full_arr[row, :] = np.dot(scte_matrix, full_arr[row, :])
+
+        # Convert to ADU.
+        full_arr /= amp_props.gain
 
         self._amp_images[amp_name] = full_segment
+
+    def _add_read_noise_and_bias(self, amp_name, add_read_noise):
+        """
+        Add read noise and bias.  This should be done as the final
+        step before returning the processed image.
+
+        Parameters
+        ----------
+        amp_name : str
+            The amplifier name, e.g., "R22_S11_C00".
+        add_read_noise : bool
+            Flag to add read noise.  Should be set to False for GalSim images.
+        """
+        amp_props = self.fp_props.get_amp(amp_name)
+        full_arr = self._amp_images[amp_name].getArray()
+        if add_read_noise:
+            full_arr += np.random.normal(scale=amp_props.read_noise,
+                                         size=full_arr.shape)
+        full_arr += amp_props.bias_level
 
     def _apply_crosstalk(self):
         """

@@ -4,9 +4,10 @@ readout information.
 """
 from __future__ import print_function, absolute_import, division
 import numpy as np
+import scipy.special
 import lsst.afw.geom as afwGeom
 
-__all__ = ['FocalPlaneReadout']
+__all__ = ['FocalPlaneReadout', 'cte_matrix']
 
 class FocalPlaneReadout(object):
     """
@@ -160,8 +161,6 @@ class SensorProperties(object):
         tokens = line.strip().split()
         self.name = tokens[0]
         self.num_amps = int(tokens[1])
-#        self.height = int(tokens[2])
-#        self.width = int(tokens[3])
         self.height = int(tokens[3])
         self.width = int(tokens[2])
         self._amp_names = []
@@ -207,17 +206,21 @@ class AmplifierProperties(object):
     flip_y : bool
         Flag to indicate that pixel ordering in y-direction should be
         reversed relative to mosaicked image.
+    scti : float
+        Charge transfer inefficiency in serial direction.
+    pcti : float
+        Charge transfer inefficiency in parallel direction.
     """
-    def __init__(self, line):
+    def __init__(self, line, scti=1e-6, pcti=1e-6):
+        self.scti = scti
+        self.pcti = pcti
         tokens = line.strip().split()
         self.name = tokens[0]
-#        ymin, ymax, xmin, xmax = (int(x) for x in tokens[1:5])
         xmin, xmax, ymin, ymax = (int(x) for x in tokens[1:5])
         xsize = np.abs(xmax - xmin) + 1
         ysize = np.abs(ymax - ymin) + 1
         # The following line is a kluge to get the MEF to mosaic
         # properly in ds9.
-#        ymin = (ymin + ysize) % (2*ysize)
         self.mosaic_section = afwGeom.Box2I(afwGeom.Point2I(min(xmin, xmax),
                                                             min(ymin, ymax)),
                                             afwGeom.Extent2I(xsize, ysize))
@@ -248,3 +251,46 @@ class AmplifierProperties(object):
         self.crosstalk = np.array([float(x) for x in tokens[21:]])
         self.flip_x = (tokens[5] == '-1')
         self.flip_y = (tokens[6] == '-1')
+
+def cte_matrix(npix, cti):
+    """
+    Compute the CTE matrix so that the apparent charge q_i in the i-th
+    pixel is given by
+
+    q_i = Sum_j cte_matrix_ij q0_j
+
+    where q0_j is the initial charge in j-th pixel.  The corresponding
+    python code would be
+
+    >>> cte = cte_matrix(npix, cti)
+    >>> qout = numpy.dot(cte, qin)
+
+    Parameters
+    ----------
+    npix : int
+        Number of pixels in either the serial or parallel directions.
+    cti : float
+        The charge transfer inefficiency.
+
+    Returns
+    -------
+    numpy.array
+        The npix x npix numpy array containing the CTE matrix.
+
+    Notes
+    -----
+    This implementation is based on
+    Janesick, J. R., 2001, "Scientific Charge-Coupled Devices", Chapter 5.
+
+    """
+    my_matrix = np.zeros((npix, npix), dtype=np.float)
+    for i in range(npix):
+        for j in range(1, i+1):
+            if i-j < 20:
+                my_matrix[i, j] \
+                    = scipy.special.binom(i, j)*(1 - cti)**i*cti**(i-j)
+            else:
+                my_matrix[i, j] \
+                    = (j*cti)**(i-j)*np.exp(-j*cti)/scipy.special.factorial(i-j)
+    return my_matrix
+
