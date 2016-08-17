@@ -143,10 +143,30 @@ class ImageSource(object):
         return output_image
 
     def amp_name(self, amp_info_record):
+        """
+        The ampifier name derived from a lsst.afw.table.tableLib.AmpInfoRecord.
+
+        Parameters
+        ----------
+        amp_info_record : lsst.afw.table.tableLib.AmpInfoRecord
+
+        Returns
+        -------
+        str
+             The amplifier name, e.g., "R22_S22_C00".
+        """
         return '_'.join((self.sensor_id,
                          'C%s' % amp_info_record.getName()[::2]))
 
     def _make_amp_images(self, add_read_noise):
+        """
+        Make the amplifier images for all the amps in the sensor.
+
+        Parameters
+        ----------
+        add_read_noise : bool
+            Flag to add read noise.
+        """
         self._amp_images = {}
         sensor_props = self.fp_props.get_sensor(self.sensor_id)
         for amp_name in sensor_props.amp_names:
@@ -190,14 +210,14 @@ class ImageSource(object):
 
         # Add defects.
 
-#        # Apply CTE.
-#        pcte_matrix = cte_matrix(full_arr.shape[0], amp_props.pcti)
-#        for col in range(0, full_arr.shape[1]):
-#            full_arr[:, col] = np.dot(pcte_matrix, full_arr[:, col])
-#
-#        scte_matrix = cte_matrix(full_arr.shape[1], amp_props.scti)
-#        for row in range(0, full_arr.shape[0]):
-#            full_arr[row, :] = np.dot(scte_matrix, full_arr[row, :])
+        # Apply CTE.
+        pcte_matrix = cte_matrix(full_arr.shape[0], amp_props.pcti)
+        for col in range(0, full_arr.shape[1]):
+            full_arr[:, col] = np.dot(pcte_matrix, full_arr[:, col])
+
+        scte_matrix = cte_matrix(full_arr.shape[1], amp_props.scti)
+        for row in range(0, full_arr.shape[0]):
+            full_arr[row, :] = np.dot(scte_matrix, full_arr[row, :])
 
         # Convert to ADU.
         full_arr /= amp_props.gain
