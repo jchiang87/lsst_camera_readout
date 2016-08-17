@@ -25,6 +25,7 @@ class FocalPlaneReadout(object):
         "R22_S11_C00".
     """
     def __init__(self):
+        "FocalPlaneReadout constructor"
         self.sensors = {}
         self.amps = {}
 
@@ -158,6 +159,14 @@ class SensorProperties(object):
         is used for the crosstalk matrix column ordering.
     """
     def __init__(self, line):
+        """
+        SensorProperties constructor.
+
+        Parameters
+        ----------
+        line : str
+            Line from segmentation.txt to parse for sensor properties.
+        """
         tokens = line.strip().split()
         self.name = tokens[0]
         self.num_amps = int(tokens[1])
@@ -167,11 +176,14 @@ class SensorProperties(object):
 
     @property
     def amp_names(self):
+        """
+        Amplifier names for amps associated with this sensor.
+        """
         return tuple(self._amp_names)
 
     def append_amp(self, amp_props):
         """
-        Append an amplifier to the ._amp_order list.
+        Append an amplifier to the ._amp_names list.
 
         Parameters
         ----------
@@ -188,14 +200,25 @@ class AmplifierProperties(object):
     ----------
     name : str
         The amplifier name, e.g., "R22_S11_C00".
+    mosaic_section: lsst.afw.geom.Box2I
+        The bounding box in the fully mosaicked image containing the
+        pixel data in the current amplifier.
     imaging : lsst.afw.geom.Box2I
         The imaging region bounding box.
     full_segment : lsst.afw.geom.Box2I
         The bounding box for the full segment.
+    prescan : lsst.afw.geom.Box2I
+        The bounding box for the (serial) prescan region.
+    serial_overscan : lsst.afw.geom.Box2I
+        The bounding box for the serial overscan region.
+    parallel_overscan : lsst.afw.geom.Box2I
+        The bounding box for the parallel overscan region.
     gain : float
         The amplifier gain in units of e-/ADU.
     bias_level : float
-        The bias level in e-/pixel.
+        The bias level in units of ADU.
+    read_noise : float
+        The read noise in units of rms ADU.
     dark_current : float
         The dark current in units of e-/pixel/s
     crosstalk : numpy.array
@@ -210,8 +233,21 @@ class AmplifierProperties(object):
         Charge transfer inefficiency in serial direction.
     pcti : float
         Charge transfer inefficiency in parallel direction.
+
     """
     def __init__(self, line, scti=1e-6, pcti=1e-6):
+        """
+        AmplifierProperties constructor.
+
+        Parameters
+        ----------
+        line : str
+            Line from segmentation.txt to parse for amplifier properties.
+        scti : float, optional
+            Charge transfer inefficiency in the serial direction.
+        pcti : float, optional
+            Charge transfer inefficiency in the parallel direction.
+        """
         self.scti = scti
         self.pcti = pcti
         tokens = line.strip().split()
@@ -219,8 +255,6 @@ class AmplifierProperties(object):
         xmin, xmax, ymin, ymax = (int(x) for x in tokens[1:5])
         xsize = np.abs(xmax - xmin) + 1
         ysize = np.abs(ymax - ymin) + 1
-        # The following line is a kluge to get the MEF to mosaic
-        # properly in ds9.
         self.mosaic_section = afwGeom.Box2I(afwGeom.Point2I(min(xmin, xmax),
                                                             min(ymin, ymax)),
                                             afwGeom.Extent2I(xsize, ysize))

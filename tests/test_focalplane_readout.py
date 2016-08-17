@@ -11,8 +11,8 @@ class FocalPlaneReadoutTestCase(unittest.TestCase):
         pass
 
     def test_read_segmentation_txt(self):
-        seg_file = os.path.join(lsstUtils.getPackageDir('obs_lsstSim'),
-                                'description', 'segmentation.txt')
+        seg_file = os.path.join(lsstUtils.getPackageDir('lsst_camera_readout'),
+                                'data', 'segmentation_itl.txt')
         readout_props = FocalPlaneReadout.read_phosim_seg_file(seg_file)
         sensor_props = readout_props.get_sensor('R22_S11')
         self.assertEqual(sensor_props.width, 4072)
@@ -34,7 +34,7 @@ class FocalPlaneReadoutTestCase(unittest.TestCase):
 
         amp_name = 'R22_S11_C00'
         amp_props = readout_props.get_amp(amp_name)
-        self.assertEqual(amp_props.flip_x, False)
+        self.assertEqual(amp_props.flip_x, True)
         self.assertEqual(amp_props.flip_y, True)
         bbox = amp_props.mosaic_section
         self.assertEqual(bbox.getMinX(), 0)
@@ -42,7 +42,7 @@ class FocalPlaneReadoutTestCase(unittest.TestCase):
 
         amp_name = 'R22_S11_C10'
         amp_props = readout_props.get_amp(amp_name)
-        self.assertEqual(amp_props.flip_x, False)
+        self.assertEqual(amp_props.flip_x, True)
         self.assertEqual(amp_props.flip_y, False)
         bbox = amp_props.mosaic_section
         self.assertEqual(bbox.getMinX(), 0)
