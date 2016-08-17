@@ -2,7 +2,7 @@
 #+LaTeX_CLASS: beamer
 #+LaTeX_CLASS_OPTIONS: [10pt, t]
 #+BEAMER_FRAME_LEVEL: 1
-#+TITLE: LSST Camera Electronics Readout:\\ Status Report
+#+TITLE: LSST Camera Electronics\\ Readout Simulation Code:\\ \\ Status Report
 #+AUTHOR: Jim Chiang
 #+DATE: 2016-08-17
 #+COLUMNS: %45ITEM %10BEAMER_env(Env) %8BEAMER_envargs(Env Args) %4BEAMER_col(Col) %8BEAMER_extra(Extra)
@@ -16,14 +16,14 @@
 
 * Outline
   - Desired Functionality
-  - Science Sensor Readout Properties
+  - Science Sensor Readout Geometry
+  - Pixel Geometry of Individual Segments
   - Sources for Readout Properties: PhoSim's segmentation.txt and \obslsstSim
   - Implementation
   - To Do
 
 * Desired Functionality
   - Accept inputs from GalSim or PhoSim "eimages".
-  - Write as FITS files that look like what the real data will.
   - Add electronics-related effects:
     - read noise (for PhoSim eimages)
     - bias
@@ -33,17 +33,19 @@
     - system gain
     - crosstalk
 
-    This is all fairly straight-forward, e.g., [[https://bitbucket.org/phosim/phosim_release/src/39f267c3f9733a490de85231cd7ac6c5e7154ebc/source/e2adc/e2adc.cpp?at=master&fileviewer=file-view-default][e2adc]].
-  - This work does not include sensor physics effects, e.g.,
-    brighter-fatter, tree rings, edge roll-off, QE.
+    This is all straight-forward, e.g., [[https://bitbucket.org/phosim/phosim_release/src/39f267c3f9733a490de85231cd7ac6c5e7154ebc/source/e2adc/e2adc.cpp?at=master&fileviewer=file-view-default][e2adc]].
+  - Write as FITS files that look like what the real data will.
 
-* Science Sensors Properties
+This work does not include sensor physics effects, e.g.,
+brighter-fatter, tree rings, edge roll-off, QE.
+
+* Science Sensors Readout Geometry
 #+LATEX: \centering
 #+ATTR_LATEX: height=2in
 [[./DetectorPlaneLayout_single_sensor_annotated.png]]
 #+LATEX: \vfil
   - Pixel geometries differ for e2v (left) and ITL (right) devices:
-    - Imaging regions: $512 \times 2002$ (e2v) versus
+    - Imaging segments: $512 \times 2002$ (e2v) versus
         $509 \times 2000$ (ITL).
     - e2v devices have 10 pixels of prescan; ITL devices have 3 pixels.
       Prescan only makes sense for the serial direction.
@@ -53,7 +55,7 @@
   - Serial readout is in the x-direction in sensor coordinates (ignore
     the "Camera Coordinate System").
 
-* Science Sensors Properties (cont.)
+* Pixel Geometry of Individual Segments
   - The pixel origin (1,1) is at the LLC in Segment 10 in both sensors.
   - Sky images will be flipped in the sensor x-direction relative to the
     above diagram.
@@ -91,11 +93,11 @@ Stack (e.g., in \code{cameraGeom}) which provides all of the needed
 information, then we will use that.
 
 * Implementation
-  - Make this a standalone package in the DESC software space, i.e.,
-    not part of GalSim or the Stack.  Currently, the code lives in
+  - A standalone package in the DESC software space, i.e., not part of
+    GalSim or the Stack.  Currently, the code lives in
     https://github.com/jchiang87/lsst_camera_readout
-  - The code will read the electronics readout info from a segmentation.txt
-    file.
+  - The code will read the electronics readout info from a
+    segmentation.txt file.
   - The code will accept a sensor image with the proper geometry ($4072
     \times 4000$ pixels for an ITL device, $4096 \times 4004$ pixels
     for an e2v device) and generate 16 FITS files with primary HDUs that
@@ -103,19 +105,19 @@ information, then we will use that.
     sensor data.
   - The input image data can have three possible formats:
     - PhoSim eimage FITS file
-    - GalSim.Image[DFIS]
-    - lsst.afw.Image[DFIU]
+    - \code{GalSim.Image[DFIS]}
+    - \code{lsst.afw.Image[DFIU]}
   - The pixel values in the input image should be e-/pixel.
 
 * To Do
   - Create [[https://github.com/jchiang87/lsst_camera_readout/blob/master/data/segmentation_itl.txt][segmentation.txt]] (and [[https://github.com/jchiang87/lsst_camera_readout/blob/master/data/focalplanelayout_itl.txt][focalplanelayout.txt]]) files that have
-    correct sensor geometries, and ensure that PhoSim can run using
-    these files.
+    correct sensor geometries, and ensure that PhoSim runs correctly
+    using these files.
   - Make sure the Stack (i.e., \obslsstSim) can read in and process
     the corrected per amplifier FITS files.
   - Find a common way of accessing measured electronics readout
     properties (presumably provided by the Camera team) that everybody
     (PhoSim, LSST Stack, etc.) uses.
-  - Determine sources of the image metadata for GalSim.Image or
-    lsst.afw.Image inputs so that the FITS files that are created can
-    be analyzed by the Stack.
+  - Determine sources of the image metadata for \code{GalSim.Image} or
+    \code{lsst.afw.Image} inputs so that the resulting FITS files can be
+    analyzed by the Stack.
