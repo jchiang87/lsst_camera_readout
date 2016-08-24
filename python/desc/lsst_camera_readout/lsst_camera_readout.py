@@ -36,6 +36,11 @@ class ImageSource(object):
     eimage_file : str
         Filename of the eimage FITS file from which the amplifier images
         will be extracted.
+    image_array : ndarray, nominally uint16
+        Two-dimensional array containing an assembled sensor image
+        (only, no pre-scan or over-scan regions).  For ITL sensors the
+        dimensions are (4000, 4072), i.e., with the x (serial) direction
+        second.  If image_array is specified, eimage_file should be omitted.
     seg_file : str, optional
         Full path of segmentation.txt file, the PhoSim-formatted file
         that describes the properties of the sensors in the focal
@@ -46,6 +51,10 @@ class ImageSource(object):
         then it will be extracted from the eimage_file name.
     add_read_noise : bool, optional
         Flag to add read noise.
+    exptime : float, optional
+        Used only if image_array is specified (so the code is unable to look
+        up the EXPTIME value from the header of eimage_file).  The value of
+        exptime (in seconds) defaults to 30.
 
     Attributes
     ----------
@@ -60,13 +69,26 @@ class ImageSource(object):
         Object containing the readout properties of the sensors in the
         focal plane, extracted from the segmentation.txt file.
     '''
-    def __init__(self, eimage_file, seg_file=None, sensor_id=None,
-                 add_read_noise=True):
+    def __init__(self, eimage_file=None, image_array=None, seg_file=None, 
+                 sensor_id=None, add_read_noise=True, exptime=30.):
         """
         Class constructor.
         """
-        self.eimage = fits.open(eimage_file)
-        self.eimage_data = self.eimage[0].data
+
+        if eimage_file is None:
+            # If no eimage_file name is specified, create an HDUList object from
+            # the (provided) image_array.  If image_array is provided, then the
+            # sensor_id and exposure time also must be defined.  The code below
+            # defines an HDUList data structure as if an eimage_file had been
+            # read, adding the image_data and the EXPTIME keyword to the
+            # primary HDU.
+            self.eimage = fits.HDUList([fits.PrimaryHDU(image_array)])
+            self.eimage[0].header.set('EXPTIME',exptime)
+            self.eimage_data = image_array
+
+        if image_array is None:
+            self.eimage = fits.open(eimage_file)
+            self.eimage_data = self.eimage[0].data
 
         if seg_file is None:
             seg_file = os.path.join(lsstUtils.getPackageDir('obs_lsstSim'),
