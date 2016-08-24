@@ -7,7 +7,16 @@ import lsst.obs.lsstSim as lsstSim
 from desc.lsst_camera_readout import ImageSource, set_itl_bboxes
 
 eimage_file = '../data/lsst_e_921297_f2_R22_S11_E000_transpose.fits.gz'
-image_source = ImageSource(eimage_file, seg_file='../data/segmentation_itl.txt')
+seg_file = '../data/segmentation_itl.txt'
+
+# Create an ImageSource object directly from the eimage file.
+#image_source = ImageSource.create_from_eimage(eimage_file, seg_file=seg_file)
+
+# Create an ImageSource object from a numpy array.
+imarr = fits.open(eimage_file)[0].data
+exptime = 30.
+sensor_id = 'R22_S11'
+image_source = ImageSource(imarr, exptime, sensor_id, seg_file=seg_file)
 
 output = fits.HDUList()
 output.append(fits.PrimaryHDU())

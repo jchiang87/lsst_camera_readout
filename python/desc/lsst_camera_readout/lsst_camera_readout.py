@@ -33,26 +33,30 @@ class ImageSource(object):
 
     Parameters
     ----------
-    eimage_file : str
-        Filename of the eimage FITS file from which the amplifier images
-        will be extracted.
+    image_array : np.array
+        A numpy array containing the pixel data for an eimage.
+    exptime : float
+        The exposure time of the image in seconds.
+    sensor_id : str
+        The raft and sensor identifier, e.g., 'R22_S11'.  If None,
+        then it will be extracted from the eimage_file name.
     seg_file : str, optional
         Full path of segmentation.txt file, the PhoSim-formatted file
         that describes the properties of the sensors in the focal
         plane.  If None, then the version in obs_lsstSim/description
         will be used.
-    sensor_id : str, optional
-        The raft and sensor identifier, e.g., 'R22_S11'.  If None,
-        then it will be extracted from the eimage_file name.
-    add_read_noise : bool, optional
-        Flag to add read noise.
 
     Attributes
     ----------
     eimage : astropy.io.fits.HDUList
-        The input eimage data.
+        The input eimage data.  This is used as a container for both
+        the pixel data and image metadata.
     eimage_data : np.array
         The data attribute of the eimage PrimaryHDU.
+    exptime : float
+        The exposure time of the image in seconds.
+    sensor_id : str
+        The raft and sensor identifier, e.g., 'R22_S11'.
     _amp_images : dict
         Dictionary of amplifier images to serve as a cache so that each
         amplifier image is constructed only once.
@@ -60,25 +64,54 @@ class ImageSource(object):
         Object containing the readout properties of the sensors in the
         focal plane, extracted from the segmentation.txt file.
     '''
-    def __init__(self, eimage_file, seg_file=None, sensor_id=None,
-                 add_read_noise=True):
+    def __init__(self, image_array, exptime, sensor_id, seg_file=None):
         """
         Class constructor.
         """
-        self.eimage = fits.open(eimage_file)
+        self.eimage = fits.HDUList()
+        self.eimage.append(fits.PrimaryHDU(image_array))
         self.eimage_data = self.eimage[0].data
 
-        if seg_file is None:
-            seg_file = os.path.join(lsstUtils.getPackageDir('obs_lsstSim'),
-                                    'description', 'segmentation.txt')
-        self.fp_props = FocalPlaneReadout.read_phosim_seg_file(seg_file)
+        self.exptime = exptime
+        self.sensor_id = sensor_id
 
-        if sensor_id is None:
-            self.sensor_id = self.extract_sensor_id(eimage_file)
-        else:
-            self.sensor_id = sensor_id
+        self._read_seg_file(seg_file)
+        self._make_amp_images()
 
-        self._make_amp_images(add_read_noise)
+    @staticmethod
+    def create_from_eimage(eimage_file, sensor_id=None, seg_file=None):
+        """
+        Create an ImageSource object from a PhoSim eimage file.
+
+        Parameters
+        ----------
+        eimage_file : str
+           Filename of the eimage FITS file from which the amplifier
+           images will be extracted.
+        sensor_id : str
+            The raft and sensor identifier, e.g., 'R22_S11'.  If None,
+            then it will be extracted from the eimage_file name.
+        seg_file : str, optional
+            Full path of segmentation.txt file, the PhoSim-formatted file
+            that describes the properties of the sensors in the focal
+            plane.  If None, then the version in obs_lsstSim/description
+            will be used.
+
+        Returns
+        -------
+        ImageSource object
+            An ImageSource object with the pixel data and metadata from
+            the eimage file.
+        """
+        eimage = fits.open(eimage_file)
+        exptime = eimage[0].header['EXPTIME']
+        sensor_id = ImageSource.extract_sensor_id(eimage_file)
+
+        image_source = ImageSource(eimage[0].data, exptime, sensor_id,
+                                   seg_file=seg_file)
+        image_source.eimage = eimage
+        image_source.eimage_data = eimage[0].data
+        return image_source
 
     @staticmethod
     def extract_sensor_id(eimage_file):
@@ -99,16 +132,11 @@ class ImageSource(object):
         tokens = os.path.basename(eimage_file).split('_')
         return '_'.join(tokens[4:6])
 
-    def _exptime(self):
-        """
-        The exposure time of the frame in seconds.
-
-        Returns
-        -------
-        float
-            The exposure time of the frame in seconds from the eimage_file.
-        """
-        return self.eimage[0].header['EXPTIME']
+    def _read_seg_file(self, seg_file):
+        if seg_file is None:
+            seg_file = os.path.join(lsstUtils.getPackageDir('obs_lsstSim'),
+                                    'description', 'segmentation.txt')
+        self.fp_props = FocalPlaneReadout.read_phosim_seg_file(seg_file)
 
     def getAmpImage(self, amp_info_record, imageFactory=afwImage.ImageI):
         """
@@ -158,14 +186,9 @@ class ImageSource(object):
         return '_'.join((self.sensor_id,
                          'C%s' % amp_info_record.getName()[::2]))
 
-    def _make_amp_images(self, add_read_noise):
+    def _make_amp_images(self):
         """
         Make the amplifier images for all the amps in the sensor.
-
-        Parameters
-        ----------
-        add_read_noise : bool
-            Flag to add read noise.
         """
         self._amp_images = {}
         sensor_props = self.fp_props.get_sensor(self.sensor_id)
@@ -173,7 +196,7 @@ class ImageSource(object):
             self._make_amp_image(amp_name)
         self._apply_crosstalk()
         for amp_name in sensor_props.amp_names:
-            self._add_read_noise_and_bias(amp_name, add_read_noise)
+            self._add_read_noise_and_bias(amp_name)
 
     def _make_amp_image(self, amp_name):
         """
@@ -205,7 +228,7 @@ class ImageSource(object):
         full_arr = full_segment.getArray()
 
         # Add dark current.
-        full_arr += np.random.poisson(amp_props.dark_current*self._exptime(),
+        full_arr += np.random.poisson(amp_props.dark_current*self.exptime,
                                       size=full_arr.shape)
 
         # Add defects.
@@ -224,7 +247,7 @@ class ImageSource(object):
 
         self._amp_images[amp_name] = full_segment
 
-    def _add_read_noise_and_bias(self, amp_name, add_read_noise):
+    def _add_read_noise_and_bias(self, amp_name):
         """
         Add read noise and bias.  This should be done as the final
         step before returning the processed image.
@@ -233,14 +256,11 @@ class ImageSource(object):
         ----------
         amp_name : str
             The amplifier name, e.g., "R22_S11_C00".
-        add_read_noise : bool
-            Flag to add read noise.  Should be set to False for GalSim images.
         """
         amp_props = self.fp_props.get_amp(amp_name)
         full_arr = self._amp_images[amp_name].getArray()
-        if add_read_noise:
-            full_arr += np.random.normal(scale=amp_props.read_noise,
-                                         size=full_arr.shape)
+        full_arr += np.random.normal(scale=amp_props.read_noise,
+                                     size=full_arr.shape)
         full_arr += amp_props.bias_level
 
     def _apply_crosstalk(self):
